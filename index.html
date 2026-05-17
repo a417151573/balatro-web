@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小丑牌 · V1.0.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --color-table:   #2d5a3d;
+  --color-accent:  #e8682a;
+  --color-discard: #a83232;
+  --color-gold:    #d4a017;
+  --color-card-red:#d33f3f;
+  --color-card-bg: #fbfaf7;
+  --color-score:   #5dd67a;
+  --radius-card:   12px;
+  --radius-btn:    999px;
+  --ease-card:     200ms ease;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  color: #fff;
+  overflow: hidden;
+}
+
+/* ── Scale wrapper ── */
+#wrap { width: 1080px; height: 640px; transform-origin: center center; }
+
+/* ── Game viewport ── */
+.game-vp {
+  width: 1080px; height: 640px;
+  background: var(--color-table);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0,0,0,.45);
+  position: relative;
+  background-image:
+    radial-gradient(ellipse at 50% 100%, rgba(0,0,0,.25) 0%, transparent 70%),
+    repeating-linear-gradient(45deg, transparent, transparent 20px,
+      rgba(255,255,255,.012) 20px, rgba(255,255,255,.012) 21px);
+}
+
+/* ── HUD ── */
+.hud {
+  display: flex; height: 64px; flex-shrink: 0;
+  background: rgba(0,0,0,.35); backdrop-filter: blur(4px);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding: 0 24px;
+}
+.hud-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border-right: 1px solid rgba(255,255,255,.1);
+}
+.hud-item:last-child { border-right: none; }
+.hud-label { font-size: 10px; color: rgba(255,255,255,.55); letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+.hud-val { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.hud-val.target   { color: var(--color-gold); }
+.hud-val.score    { color: var(--color-score); }
+.hud-val.plays    { color: var(--color-accent); }
+.hud-val.discards { color: #e06060; }
+
+/* ── Play zone ── */
+.play-zone {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,.15);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  position: relative; gap: 10px;
+}
+.hand-badge {
+  font-size: 13px; font-weight: 700;
+  padding: 5px 18px; border-radius: var(--radius-btn);
+  letter-spacing: .5px; transition: background .2s, color .2s;
+}
+.hand-badge.active {
+  background: rgba(232,104,42,.85); color: #fff;
+  box-shadow: 0 2px 8px rgba(232,104,42,.4);
+}
+.hand-badge.idle { background: rgba(255,255,255,.1); color: rgba(255,255,255,.45); }
+
+.play-cards { display: flex; gap: 12px; align-items: center; min-height: 128px; }
+.placeholder {
+  width: 88px; height: 128px; border-radius: var(--radius-card);
+  border: 2px dashed rgba(255,255,255,.18);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.2); font-size: 22px;
+}
+.zone-hint { font-size: 12px; color: rgba(255,255,255,.35); letter-spacing: .5px; }
+
+/* ── Score flash ── */
+.score-flash {
+  position: absolute; pointer-events: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 32px; font-weight: 700; color: var(--color-score);
+  text-shadow: 0 2px 12px rgba(0,0,0,.6);
+  animation: rise 1.1s ease-out forwards;
+  z-index: 20; white-space: nowrap;
+  left: 50%; top: 50%;
+}
+@keyframes rise {
+  0%   { opacity:1; transform: translate(-50%,-50%) scale(1); }
+  60%  { opacity:1; transform: translate(-50%,-80%) scale(1.1); }
+  100% { opacity:0; transform: translate(-50%,-110%) scale(.9); }
+}
+
+/* ── Hand zone ── */
+.hand-zone {
+  flex-shrink: 0; padding: 14px 24px 10px;
+  background: rgba(0,0,0,.2);
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.hand-label { font-size: 10px; color: rgba(255,255,255,.4); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+.hand-cards { display: flex; gap: 8px; justify-content: center; }
+
+/* ── Action bar ── */
+.action-bar {
+  flex-shrink: 0; display: flex; align-items: center;
+  justify-content: center; gap: 12px;
+  padding: 12px 24px;
+  background: rgba(0,0,0,.3);
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; border: none;
+  border-radius: var(--radius-btn);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  padding: 10px 28px; letter-spacing: .3px;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+.btn:hover:not(:disabled) { transform: translateY(-2px); }
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn-play {
+  background: var(--color-accent); color: #fff;
+  box-shadow: 0 4px 14px rgba(232,104,42,.45);
+}
+.btn-play:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(232,104,42,.6); }
+.btn-discard {
+  background: var(--color-discard); color: #fff;
+  box-shadow: 0 4px 14px rgba(168,50,50,.4);
+}
+.btn-discard:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(168,50,50,.55); }
+.btn-restart {
+  background: transparent; color: rgba(255,255,255,.7);
+  border: 1.5px solid rgba(255,255,255,.3);
+}
+.btn-restart:hover { border-color: rgba(255,255,255,.6); color: #fff; }
+
+/* ── Poker card ── */
+.card {
+  width: 82px; height: 118px;
+  background: var(--color-card-bg);
+  border-radius: var(--radius-card);
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.08);
+  transition: transform var(--ease-card), box-shadow var(--ease-card);
+  cursor: pointer; user-select: none; flex-shrink: 0;
+}
+.card:hover:not(.sel):not(.no-click) {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0,0,0,.22);
+}
+.card.sel {
+  transform: translateY(-12px);
+  box-shadow: 0 0 0 2.5px var(--color-accent), 0 8px 20px rgba(232,104,42,.35);
+}
+.card .corner { position: absolute; line-height: 1; font-weight: 700; }
+.card .tl { top: 5px; left: 7px; }
+.card .br { bottom: 5px; right: 7px; transform: rotate(180deg); }
+.card .rk { font-size: 14px; display: block; }
+.card .su { font-size: 11px; display: block; }
+.card .cs {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 38px; line-height: 1;
+}
+.red .corner, .red .cs { color: var(--color-card-red); }
+.blk .corner, .blk .cs { color: #1a1a1a; }
+
+/* Play-zone cards are bigger and non-interactive */
+.play-zone .card {
+  width: 88px; height: 128px; cursor: default;
+}
+.play-zone .card .rk { font-size: 16px; }
+.play-zone .card .su { font-size: 13px; }
+.play-zone .card .cs { font-size: 46px; }
+
+/* ── Modal ── */
+.overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: #0d0d0d; border-radius: 20px;
+  padding: 44px 56px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  min-width: 340px;
+}
+.modal.win  { border: 2px solid var(--color-gold); }
+.modal.lose { border: 2px solid rgba(255,255,255,.18); }
+.modal-icon  { font-size: 52px; }
+.modal-title { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; }
+.modal.win  .modal-title { color: var(--color-gold); }
+.modal.lose .modal-title { color: #e06060; }
+.modal-sub  { font-size: 14px; color: rgba(255,255,255,.55); font-family: 'JetBrains Mono', monospace; }
+.modal-sub span { color: var(--color-score); font-weight: 700; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div class="game-vp">
+
+    <!-- HUD -->
+    <div class="hud">
+      <div class="hud-item">
+        <span class="hud-label">目标分</span>
+        <span class="hud-val target">300</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">当前分</span>
+        <span class="hud-val score" id="hScore">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">剩余出牌</span>
+        <span class="hud-val plays" id="hPlays">4</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">剩余弃牌</span>
+        <span class="hud-val discards" id="hDiscards">3</span>
+      </div>
+    </div>
+
+    <!-- Play zone -->
+    <div class="play-zone" id="playZone">
+      <span class="hand-badge idle" id="badge">请选 1–5 张牌</span>
+      <div class="play-cards" id="playCards"></div>
+      <span class="zone-hint">选中 1–5 张牌后点击「出牌」</span>
+    </div>
+
+    <!-- Hand zone -->
+    <div class="hand-zone">
+      <div class="hand-label">手牌 · <span id="hCount">8</span> 张</div>
+      <div class="hand-cards" id="handCards"></div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar">
+      <button class="btn btn-play"    id="btnPlay"    onclick="playHand()">出牌</button>
+      <button class="btn btn-discard" id="btnDiscard" onclick="discardCards()">弃牌</button>
+      <button class="btn btn-restart"                 onclick="restart()">重新开始</button>
+    </div>
+
+    <!-- Win / Lose modal（game-vp 层级，覆盖整个视口） -->
+    <div class="overlay hidden" id="overlay">
+      <div class="modal" id="modal">
+        <div class="modal-icon"  id="mIcon"></div>
+        <div class="modal-title" id="mTitle"></div>
+        <div class="modal-sub">最终得分 <span id="mScore"></span> 分</div>
+        <button class="btn btn-play" style="margin-top:8px" onclick="restart()">重新开始</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const SUITS = ['♥','♦','♣','♠'];
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+
+const CARD_VAL = { A:11, J:10, Q:10, K:10 };
+for (let i = 2; i <= 10; i++) CARD_VAL[String(i)] = i;
+
+// Rank ordering index for straight detection (not scoring values)
+const RANK_ORD = { A:12, '2':0,'3':1,'4':2,'5':3,'6':4,'7':5,'8':6,'9':7,'10':8, J:9, Q:10, K:11 };
+
+const HAND_TYPES = [
+  { name:'皇家同花顺', base:100, mult:8 },
+  { name:'同花顺',     base:100, mult:8 },
+  { name:'四条',       base:60,  mult:7 },
+  { name:'葫芦',       base:40,  mult:4 },
+  { name:'同花',       base:35,  mult:4 },
+  { name:'顺子',       base:30,  mult:4 },
+  { name:'三条',       base:30,  mult:3 },
+  { name:'两对',       base:20,  mult:2 },
+  { name:'对子',       base:10,  mult:2 },
+  { name:'高牌',       base:5,   mult:1 },
+];
+
+// ── Game state ───────────────────────────────────────────────────────────────
+let G = {};
+
+function mkDeck() {
+  return SUITS.flatMap(s => RANKS.map(r => ({ suit:s, rank:r, id: s+r })));
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function initState() {
+  const deck = shuffle(mkDeck());
+  return {
+    deck:         deck.slice(8),
+    hand:         deck.slice(0, 8),
+    sel:          [],          // selected card ids
+    score:        0,
+    target:       300,
+    handsLeft:    4,
+    discardsLeft: 3,
+    status:       'playing',   // playing | win | lose
+  };
+}
+
+// ── Hand detection ───────────────────────────────────────────────────────────
+function detectHand(cards) {
+  if (!cards.length) return null;
+  const n = cards.length;
+
+  const suits = cards.map(c => c.suit);
+  const ords  = cards.map(c => RANK_ORD[c.rank]).sort((a, b) => a - b);
+
+  // rank frequency map
+  const freq = {};
+  cards.forEach(c => freq[c.rank] = (freq[c.rank] || 0) + 1);
+  const counts = Object.values(freq).sort((a, b) => b - a);
+
+  const isFlush = n === 5 && suits.every(s => s === suits[0]);
+
+  const isStraight = n === 5 && (() => {
+    const uniq = [...new Set(ords)];
+    if (uniq.length !== 5) return false;
+    if (uniq[4] - uniq[0] === 4) return true;  // normal consecutive
+    // Ace-low: A-2-3-4-5 → ords [0,1,2,3,12]
+    return JSON.stringify(uniq) === '[0,1,2,3,12]';
+  })();
+
+  // Royal flush: A K Q J 10, all same suit
+  const isRoyal = isFlush && n === 5 &&
+    ['A','K','Q','J','10'].every(r => cards.some(c => c.rank === r));
+
+  if (isRoyal)                        return HAND_TYPES[0]; // 皇家同花顺
+  if (isFlush && isStraight)          return HAND_TYPES[1]; // 同花顺
+  if (counts[0] === 4)                return HAND_TYPES[2]; // 四条
+  if (counts[0] === 3 && counts[1] === 2) return HAND_TYPES[3]; // 葫芦
+  if (isFlush)                        return HAND_TYPES[4]; // 同花
+  if (isStraight)                     return HAND_TYPES[5]; // 顺子
+  if (counts[0] === 3)                return HAND_TYPES[6]; // 三条
+  if (counts[0] === 2 && counts[1] === 2) return HAND_TYPES[7]; // 两对
+  if (counts[0] === 2)                return HAND_TYPES[8]; // 对子
+  return HAND_TYPES[9];                                      // 高牌
+}
+
+function calcScore(handType, cards) {
+  const cardSum = cards.reduce((s, c) => s + CARD_VAL[c.rank], 0);
+  return (handType.base + cardSum) * handType.mult;
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+function toggleCard(id) {
+  if (G.status !== 'playing') return;
+  const i = G.sel.indexOf(id);
+  if (i >= 0) {
+    G.sel.splice(i, 1);
+  } else {
+    if (G.sel.length >= 5) return;
+    if (G.hand.some(c => c.id === id)) G.sel.push(id);
+  }
+  render();
+}
+
+function replenish() {
+  const need = 8 - G.hand.length;
+  G.hand.push(...G.deck.splice(0, need));
+}
+
+function playHand() {
+  if (!G.sel.length || G.handsLeft <= 0 || G.status !== 'playing') return;
+  const played = G.hand.filter(c => G.sel.includes(c.id));
+  const ht     = detectHand(played);
+  const pts    = calcScore(ht, played);
+
+  G.hand = G.hand.filter(c => !G.sel.includes(c.id));
+  G.sel  = [];
+  G.score += pts;
+  G.handsLeft--;
+  replenish();
+
+  if (G.score >= G.target) G.status = 'win';
+  else if (G.handsLeft <= 0) G.status = 'lose';
+
+  render();
+  if (G.status !== 'playing') showModal();
+  else showFlash(pts);
+}
+
+function discardCards() {
+  if (!G.sel.length || G.discardsLeft <= 0 || G.status !== 'playing') return;
+  G.hand = G.hand.filter(c => !G.sel.includes(c.id));
+  G.sel  = [];
+  G.discardsLeft--;
+  replenish();
+  render();
+}
+
+function restart() {
+  G = initState();
+  document.getElementById('overlay').classList.add('hidden');
+  render();
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function cardHTML(card, clickable = true) {
+  const color = (card.suit === '♥' || card.suit === '♦') ? 'red' : 'blk';
+  const sel   = clickable && G.sel.includes(card.id) ? ' sel' : '';
+  const cls   = clickable ? '' : ' no-click';
+  const onclick = clickable ? `onclick="toggleCard('${card.id}')"` : '';
+  return `<div class="card ${color}${sel}${cls}" ${onclick}>
+    <div class="corner tl"><span class="rk">${card.rank}</span><span class="su">${card.suit}</span></div>
+    <div class="cs">${card.suit}</div>
+    <div class="corner br"><span class="rk">${card.rank}</span><span class="su">${card.suit}</span></div>
+  </div>`;
+}
+
+function render() {
+  // HUD
+  document.getElementById('hScore').textContent    = G.score;
+  document.getElementById('hPlays').textContent    = G.handsLeft;
+  document.getElementById('hDiscards').textContent = G.discardsLeft;
+  document.getElementById('hCount').textContent    = G.hand.length;
+
+  // Hand type badge
+  const badge   = document.getElementById('badge');
+  const selCards = G.hand.filter(c => G.sel.includes(c.id));
+  const ht      = detectHand(selCards);
+  if (ht && selCards.length) {
+    const preview = calcScore(ht, selCards);
+    badge.textContent = `${ht.name}  ＋${preview}`;
+    badge.className   = 'hand-badge active';
+  } else {
+    badge.textContent = '请选 1–5 张牌';
+    badge.className   = 'hand-badge idle';
+  }
+
+  // Play zone preview (selected cards + placeholders)
+  let pHTML = selCards.map(c => cardHTML(c, false)).join('');
+  for (let i = selCards.length; i < 5; i++) pHTML += '<div class="placeholder">＋</div>';
+  document.getElementById('playCards').innerHTML = pHTML;
+
+  // Hand cards
+  document.getElementById('handCards').innerHTML =
+    G.hand.map(c => cardHTML(c, true)).join('');
+
+  // Button states
+  const hasSel = G.sel.length > 0;
+  const alive  = G.status === 'playing';
+  document.getElementById('btnPlay').disabled    = !hasSel || G.handsLeft <= 0    || !alive;
+  document.getElementById('btnDiscard').disabled = !hasSel || G.discardsLeft <= 0 || !alive;
+}
+
+function showModal() {
+  const win = G.status === 'win';
+  document.getElementById('mIcon').textContent  = win ? '🎉' : '💀';
+  document.getElementById('mTitle').textContent = win ? 'You Win!' : 'Game Over';
+  document.getElementById('mScore').textContent = G.score;
+  document.getElementById('modal').className    = 'modal ' + (win ? 'win' : 'lose');
+  document.getElementById('overlay').classList.remove('hidden');
+}
+
+function showFlash(pts) {
+  const el = document.createElement('div');
+  el.className   = 'score-flash';
+  el.textContent = `＋${pts}`;
+  document.getElementById('playZone').appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+// ── Responsive scale ─────────────────────────────────────────────────────────
+function scaleViewport() {
+  const wrap = document.getElementById('wrap');
+  const s = Math.min(window.innerWidth / 1080, window.innerHeight / 640, 1);
+  wrap.style.transform = `scale(${s})`;
+}
+window.addEventListener('resize', scaleViewport);
+scaleViewport();
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+G = initState();
+render();
+</script>
+</body>
+</html>
